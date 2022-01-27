@@ -1,0 +1,39 @@
+Making a UEFI bootable iPXE USB drive
+
+  1.  Build the UEFI executable for iPXE
+  
+      # clone the IPXE source code
+      $ git clone https://github.com/Aquantia/ipxe.git
+      # Go into the src directory of the cloned git repo
+      $ cd ipxe/src
+      # Compile the UEFI iPXE executable
+      $ make bin-x86_64-efi/ipxe.efi
+
+  2.  Format the USB drive
+
+      # First we'll wipe the USB drive (THIS WILL DESTROY ALL DATA)
+      $ sudo dd if=/dev/zero of=/dev/sdxY bs=512 count=1
+      # Then we'll partition the drive
+      $ sudo cfdisk /dev/sdxY
+      # cfdisk will ask you what type of partition table you want, select GPT
+      # while switch the partition type to “efi system”
+
+  3. Formatting, and mounting the USB drive
+
+      # First we'll format it FAT32
+      $ sudo mkfs.fat -F32 /dev/sdxY
+      # Now we'll make a directory to mount the USB drive in
+      $ mkdir /tmp/efidrive
+      # Now we can mount the USB drive
+      $ sudo mount /dev/sdxY /tmp/efidrive
+
+  4. Placing the UEFI iPXE executable
+
+      # Assuming you're still in the ipxe/src directory
+      # Make the necessary efi/boot directory in the USB drive
+      $ sudo mkdir -p /tmp/efidrive/efi/boot
+      # copy the executable and rename it to bootx64.efi to conform to the UEFI standard
+      $ sudo cp bin-x86_64-efi/ipxe.efi /tmp/efidrive/efi/boot/bootx64.efi
+      # unmount the drive
+      $ sudo umount /tmp/efidrive
+
