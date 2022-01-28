@@ -37,3 +37,5 @@ Making a UEFI bootable iPXE USB drive
       # unmount the drive
       $ sudo umount /tmp/efidrive
 
+  5. Now your Pendrive ready to for iPXE boot.
+
