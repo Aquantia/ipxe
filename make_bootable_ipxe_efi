@@ -3,6 +3,7 @@ Making a UEFI bootable iPXE USB drive
   1.  Build the UEFI executable for iPXE
   
       # clone the IPXE source code
+      # while cloning make sure you are cloning aqc_master branch which have support to AQC107
       $ git clone https://github.com/Aquantia/ipxe.git
       # Go into the src directory of the cloned git repo
       $ cd ipxe/src
