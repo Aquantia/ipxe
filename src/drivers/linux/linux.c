@@ -130,48 +130,24 @@ struct linux_setting *linux_find_setting(char *name, struct list_head *settings)
 	return result;
 }
 
-/**
- * Apply Linux command-line settings
- *
- * @v list		List of command-line settings
- * @v settings		Settings block
- */
-void linux_apply_settings ( struct list_head *list,
-			    struct settings *settings ) {
-	struct linux_setting *lsetting;
-	struct settings *ignore;
-	struct setting setting;
+void linux_apply_settings(struct list_head *new_settings, struct settings *settings_block)
+{
+	struct linux_setting *setting;
 	int rc;
 
-	list_for_each_entry ( lsetting, list, list ) {
-
+	list_for_each_entry(setting, new_settings, list) {
 		/* Skip already applied settings */
-		if ( lsetting->applied )
+		if (setting->applied)
 			continue;
 
-		/* Parse setting name */
-		if ( ( rc = parse_setting_name ( lsetting->name,
-						 find_child_settings, &ignore,
-						 &setting ) ) != 0 ) {
-			DBGC ( settings, "Linux cannot parse %s: %s\n",
-			       lsetting->name, strerror ( rc ) );
-			continue;
+		struct setting *s = find_setting(setting->name);
+		if (s) {
+			rc = storef_setting(settings_block, find_setting(setting->name), setting->value);
+			if (rc != 0)
+				DBG("linux storing setting '%s' = '%s' failed\n", setting->name, setting->value);
+			setting->applied = 1;
+		} else {
+			DBG("linux unknown setting '%s'\n", setting->name);
 		}
-
-		/* Apply default type if not specified */
-		if ( ! setting.type )
-			setting.type = &setting_type_string;
-
-		/* Store setting */
-		if ( ( rc = storef_setting ( settings, &setting,
-					     lsetting->value ) ) != 0 ) {
-			DBGC ( settings, "Linux cannot set %s=\"%s\": %s\n",
-			       lsetting->name, lsetting->value,
-			       strerror ( rc ) );
-			continue;
-		}
-
-		/* Mark setting as applied */
-		lsetting->applied = 1;
 	}
 }

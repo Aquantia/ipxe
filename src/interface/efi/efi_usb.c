@@ -32,7 +32,6 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #include <ipxe/efi/efi.h>
 #include <ipxe/efi/efi_path.h>
 #include <ipxe/efi/efi_driver.h>
-#include <ipxe/efi/efi_null.h>
 #include <ipxe/efi/efi_usb.h>
 #include <ipxe/usb.h>
 
@@ -415,11 +414,9 @@ static void efi_usb_async_complete ( struct usb_endpoint *ep,
 	/* Construct status */
 	status = ( ( rc == 0 ) ? 0 : EFI_USB_ERR_SYSTEM );
 
-	/* Report completion, if applicable */
-	if ( usbep->callback ) {
-		usbep->callback ( iobuf->data, iob_len ( iobuf ),
-				  usbep->context, status );
-	}
+	/* Report completion */
+	usbep->callback ( iobuf->data, iob_len ( iobuf ), usbep->context,
+			  status );
 
  drop:
 	/* Recycle or free I/O buffer */
@@ -458,9 +455,11 @@ static int efi_usb_async_start ( struct efi_usb_interface *usbintf,
 	EFI_STATUS efirc;
 	int rc;
 
-	/* Close endpoint, if applicable */
-	if ( efi_usb_is_open ( usbintf, endpoint ) )
-		efi_usb_close ( usbintf->endpoint[index] );
+	/* Fail if endpoint is already open */
+	if ( efi_usb_is_open ( usbintf, endpoint ) ) {
+		rc = -EINVAL;
+		goto err_already_open;
+	}
 
 	/* Open endpoint */
 	if ( ( rc = efi_usb_open ( usbintf, endpoint,
@@ -497,10 +496,9 @@ static int efi_usb_async_start ( struct efi_usb_interface *usbintf,
 	bs->SetTimer ( usbep->event, TimerCancel, 0 );
  err_timer:
  err_prefill:
-	usbep->callback = NULL;
-	usbep->context = NULL;
 	efi_usb_close ( usbep );
  err_open:
+ err_already_open:
 	return rc;
 }
 
@@ -524,9 +522,8 @@ static void efi_usb_async_stop ( struct efi_usb_interface *usbintf,
 	/* Stop timer */
 	bs->SetTimer ( usbep->event, TimerCancel, 0 );
 
-	/* Clear callback parameters */
-	usbep->callback = NULL;
-	usbep->context = NULL;
+	/* Close endpoint */
+	efi_usb_close ( usbep );
 }
 
 /******************************************************************************
@@ -554,6 +551,7 @@ efi_usb_control_transfer ( EFI_USB_IO_PROTOCOL *usbio,
 			   EFI_USB_DATA_DIRECTION direction,
 			   UINT32 timeout, VOID *data, UINTN len,
 			   UINT32 *status ) {
+	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
 	struct efi_usb_interface *usbintf =
 		container_of ( usbio, struct efi_usb_interface, usbio );
 	struct efi_usb_device *usbdev = usbintf->usbdev;
@@ -561,7 +559,7 @@ efi_usb_control_transfer ( EFI_USB_IO_PROTOCOL *usbio,
 				 USB_REQUEST_TYPE ( packet->Request ) );
 	unsigned int value = le16_to_cpu ( packet->Value );
 	unsigned int index = le16_to_cpu ( packet->Index );
-	struct efi_saved_tpl tpl;
+	EFI_TPL saved_tpl;
 	int rc;
 
 	DBGC2 ( usbdev, "USBDEV %s control %04x:%04x:%04x:%04x %s %dms "
@@ -571,7 +569,7 @@ efi_usb_control_transfer ( EFI_USB_IO_PROTOCOL *usbio,
 		( ( size_t ) len ) );
 
 	/* Raise TPL */
-	efi_raise_tpl ( &tpl );
+	saved_tpl = bs->RaiseTPL ( TPL_CALLBACK );
 
 	/* Clear status */
 	*status = 0;
@@ -615,7 +613,7 @@ efi_usb_control_transfer ( EFI_USB_IO_PROTOCOL *usbio,
 
  err_control:
  err_change_config:
-	efi_restore_tpl ( &tpl );
+	bs->RestoreTPL ( saved_tpl );
 	return EFIRC ( rc );
 }
 
@@ -633,11 +631,12 @@ efi_usb_control_transfer ( EFI_USB_IO_PROTOCOL *usbio,
 static EFI_STATUS EFIAPI
 efi_usb_bulk_transfer ( EFI_USB_IO_PROTOCOL *usbio, UINT8 endpoint, VOID *data,
 			UINTN *len, UINTN timeout, UINT32 *status ) {
+	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
 	struct efi_usb_interface *usbintf =
 		container_of ( usbio, struct efi_usb_interface, usbio );
 	struct efi_usb_device *usbdev = usbintf->usbdev;
 	size_t actual = *len;
-	struct efi_saved_tpl tpl;
+	EFI_TPL saved_tpl;
 	int rc;
 
 	DBGC2 ( usbdev, "USBDEV %s bulk %s %p+%zx %dms\n", usbintf->name,
@@ -645,7 +644,7 @@ efi_usb_bulk_transfer ( EFI_USB_IO_PROTOCOL *usbio, UINT8 endpoint, VOID *data,
 		( ( size_t ) *len ), ( ( unsigned int ) timeout ) );
 
 	/* Raise TPL */
-	efi_raise_tpl ( &tpl );
+	saved_tpl = bs->RaiseTPL ( TPL_CALLBACK );
 
 	/* Clear status */
 	*status = 0;
@@ -660,7 +659,7 @@ efi_usb_bulk_transfer ( EFI_USB_IO_PROTOCOL *usbio, UINT8 endpoint, VOID *data,
 	}
 
  err_transfer:
-	efi_restore_tpl ( &tpl );
+	bs->RestoreTPL ( saved_tpl );
 	return EFIRC ( rc );
 }
 
@@ -679,11 +678,12 @@ static EFI_STATUS EFIAPI
 efi_usb_sync_interrupt_transfer ( EFI_USB_IO_PROTOCOL *usbio, UINT8 endpoint,
 				  VOID *data, UINTN *len, UINTN timeout,
 				  UINT32 *status ) {
+	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
 	struct efi_usb_interface *usbintf =
 		container_of ( usbio, struct efi_usb_interface, usbio );
 	struct efi_usb_device *usbdev = usbintf->usbdev;
 	size_t actual = *len;
-	struct efi_saved_tpl tpl;
+	EFI_TPL saved_tpl;
 	int rc;
 
 	DBGC2 ( usbdev, "USBDEV %s sync intr %s %p+%zx %dms\n", usbintf->name,
@@ -691,7 +691,7 @@ efi_usb_sync_interrupt_transfer ( EFI_USB_IO_PROTOCOL *usbio, UINT8 endpoint,
 		( ( size_t ) *len ), ( ( unsigned int ) timeout ) );
 
 	/* Raise TPL */
-	efi_raise_tpl ( &tpl );
+	saved_tpl = bs->RaiseTPL ( TPL_CALLBACK );
 
 	/* Clear status */
 	*status = 0;
@@ -706,7 +706,7 @@ efi_usb_sync_interrupt_transfer ( EFI_USB_IO_PROTOCOL *usbio, UINT8 endpoint,
 	}
 
  err_transfer:
-	efi_restore_tpl ( &tpl );
+	bs->RestoreTPL ( saved_tpl );
 	return EFIRC ( rc );
 }
 
@@ -727,10 +727,11 @@ efi_usb_async_interrupt_transfer ( EFI_USB_IO_PROTOCOL *usbio, UINT8 endpoint,
 				   BOOLEAN start, UINTN interval, UINTN len,
 				   EFI_ASYNC_USB_TRANSFER_CALLBACK callback,
 				   VOID *context ) {
+	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
 	struct efi_usb_interface *usbintf =
 		container_of ( usbio, struct efi_usb_interface, usbio );
 	struct efi_usb_device *usbdev = usbintf->usbdev;
-	struct efi_saved_tpl tpl;
+	EFI_TPL saved_tpl;
 	int rc;
 
 	DBGC2 ( usbdev, "USBDEV %s async intr %s len %#zx int %d %p/%p\n",
@@ -740,7 +741,7 @@ efi_usb_async_interrupt_transfer ( EFI_USB_IO_PROTOCOL *usbio, UINT8 endpoint,
 		callback, context );
 
 	/* Raise TPL */
-	efi_raise_tpl ( &tpl );
+	saved_tpl = bs->RaiseTPL ( TPL_CALLBACK );
 
 	/* Start/stop transfer as applicable */
 	if ( start ) {
@@ -762,7 +763,7 @@ efi_usb_async_interrupt_transfer ( EFI_USB_IO_PROTOCOL *usbio, UINT8 endpoint,
 	}
 
  err_start:
-	efi_restore_tpl ( &tpl );
+	bs->RestoreTPL ( saved_tpl );
 	return EFIRC ( rc );
 }
 
@@ -958,9 +959,9 @@ efi_usb_get_string_descriptor ( EFI_USB_IO_PROTOCOL *usbio, UINT16 language,
 		container_of ( usbio, struct efi_usb_interface, usbio );
 	struct efi_usb_device *usbdev = usbintf->usbdev;
 	struct usb_descriptor_header header;
-	struct efi_saved_tpl tpl;
 	VOID *buffer;
 	size_t len;
+	EFI_TPL saved_tpl;
 	EFI_STATUS efirc;
 	int rc;
 
@@ -968,7 +969,7 @@ efi_usb_get_string_descriptor ( EFI_USB_IO_PROTOCOL *usbio, UINT16 language,
 		usbintf->name, language, index );
 
 	/* Raise TPL */
-	efi_raise_tpl ( &tpl );
+	saved_tpl = bs->RaiseTPL ( TPL_CALLBACK );
 
 	/* Read descriptor header */
 	if ( ( rc = usb_get_descriptor ( usbdev->func->usb, 0,
@@ -1011,7 +1012,7 @@ efi_usb_get_string_descriptor ( EFI_USB_IO_PROTOCOL *usbio, UINT16 language,
 	memset ( ( buffer + len - sizeof ( header ) ), 0, sizeof ( **string ) );
 
 	/* Restore TPL */
-	efi_restore_tpl ( &tpl );
+	bs->RestoreTPL ( saved_tpl );
 
 	/* Return allocated string */
 	*string = buffer;
@@ -1022,7 +1023,7 @@ efi_usb_get_string_descriptor ( EFI_USB_IO_PROTOCOL *usbio, UINT16 language,
  err_alloc:
  err_len:
  err_get_header:
-	efi_restore_tpl ( &tpl );
+	bs->RestoreTPL ( saved_tpl );
 	return EFIRC ( rc );
 }
 
@@ -1109,7 +1110,6 @@ static int efi_usb_install ( struct efi_usb_device *usbdev,
 	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
 	struct usb_function *func = usbdev->func;
 	struct efi_usb_interface *usbintf;
-	int leak = 0;
 	EFI_STATUS efirc;
 	int rc;
 
@@ -1152,30 +1152,19 @@ static int efi_usb_install ( struct efi_usb_device *usbdev,
 	       usbintf->name, efi_handle_name ( usbintf->handle ) );
 	return 0;
 
-	if ( ( efirc = bs->UninstallMultipleProtocolInterfaces (
+	bs->UninstallMultipleProtocolInterfaces (
 			usbintf->handle,
 			&efi_usb_io_protocol_guid, &usbintf->usbio,
 			&efi_device_path_protocol_guid, usbintf->path,
-			NULL ) ) != 0 ) {
-		DBGC ( usbdev, "USBDEV %s could not uninstall: %s\n",
-		       usbintf->name, strerror ( -EEFI ( efirc ) ) );
-		leak = 1;
-	}
-	efi_nullify_usbio ( &usbintf->usbio );
+			NULL );
  err_install_protocol:
 	efi_usb_close_all ( usbintf );
 	efi_usb_free_all ( usbintf );
 	list_del ( &usbintf->list );
-	if ( ! leak )
-		free ( usbintf->path );
+	free ( usbintf->path );
  err_path:
-	if ( ! leak )
-		free ( usbintf );
+	free ( usbintf );
  err_alloc:
-	if ( leak ) {
-		DBGC ( usbdev, "USBDEV %s nullified and leaked\n",
-		       usbintf->name );
-	}
 	return rc;
 }
 
@@ -1187,8 +1176,6 @@ static int efi_usb_install ( struct efi_usb_device *usbdev,
 static void efi_usb_uninstall ( struct efi_usb_interface *usbintf ) {
 	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
 	struct efi_usb_device *usbdev = usbintf->usbdev;
-	int leak = efi_shutdown_in_progress;
-	EFI_STATUS efirc;
 
 	DBGC ( usbdev, "USBDEV %s uninstalling %s\n",
 	       usbintf->name, efi_handle_name ( usbintf->handle ) );
@@ -1197,21 +1184,14 @@ static void efi_usb_uninstall ( struct efi_usb_interface *usbintf ) {
 	 * seems to be required on some platforms to avoid failures
 	 * when uninstalling protocols.
 	 */
-	if ( ! efi_shutdown_in_progress )
-		bs->DisconnectController ( usbintf->handle, NULL, NULL );
+	bs->DisconnectController ( usbintf->handle, NULL, NULL );
 
 	/* Uninstall protocols */
-	if ( ( ! efi_shutdown_in_progress ) &&
-	     ( ( efirc = bs->UninstallMultipleProtocolInterfaces (
+	bs->UninstallMultipleProtocolInterfaces (
 			usbintf->handle,
 			&efi_usb_io_protocol_guid, &usbintf->usbio,
 			&efi_device_path_protocol_guid, usbintf->path,
-			NULL ) ) != 0 ) ) {
-		DBGC ( usbdev, "USBDEV %s could not uninstall: %s\n",
-		       usbintf->name, strerror ( -EEFI ( efirc ) ) );
-		leak = 1;
-	}
-	efi_nullify_usbio ( &usbintf->usbio );
+			NULL );
 
 	/* Close and free all endpoints */
 	efi_usb_close_all ( usbintf );
@@ -1221,18 +1201,10 @@ static void efi_usb_uninstall ( struct efi_usb_interface *usbintf ) {
 	list_del ( &usbintf->list );
 
 	/* Free device path */
-	if ( ! leak )
-		free ( usbintf->path );
+	free ( usbintf->path );
 
 	/* Free interface */
-	if ( ! leak )
-		free ( usbintf );
-
-	/* Report leakage, if applicable */
-	if ( leak && ( ! efi_shutdown_in_progress ) ) {
-		DBGC ( usbdev, "USBDEV %s nullified and leaked\n",
-		       usbintf->name );
-	}
+	free ( usbintf );
 }
 
 /**

@@ -242,7 +242,9 @@ int block_translate ( struct interface *block, userptr_t buffer, size_t size ) {
 	}
 
 	/* Attach to interfaces, mortalise self, and return */
-	intf_insert ( block, &blktrans->block, &blktrans->xfer );
+	assert ( block->dest != &null_intf );
+	intf_plug_plug ( &blktrans->xfer, block->dest );
+	intf_plug_plug ( &blktrans->block, block );
 	ref_put ( &blktrans->refcnt );
 
 	DBGC2 ( blktrans, "BLKTRANS %p created", blktrans );

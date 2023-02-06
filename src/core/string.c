@@ -27,7 +27,6 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <ctype.h>
 
 /** @file
@@ -206,24 +205,11 @@ int strncmp ( const char *first, const char *second, size_t max ) {
  * @ret diff		Difference
  */
 int strcasecmp ( const char *first, const char *second ) {
-
-	return strncasecmp ( first, second, ~( ( size_t ) 0 ) );
-}
-
-/**
- * Compare case-insensitive strings
- *
- * @v first		First string
- * @v second		Second string
- * @v max		Maximum length to compare
- * @ret diff		Difference
- */
-int strncasecmp ( const char *first, const char *second, size_t max ) {
 	const uint8_t *first_bytes = ( ( const uint8_t * ) first );
 	const uint8_t *second_bytes = ( ( const uint8_t * ) second );
 	int diff;
 
-	for ( ; max-- ; first_bytes++, second_bytes++ ) {
+	for ( ; ; first_bytes++, second_bytes++ ) {
 		diff = ( toupper ( *first_bytes ) -
 			 toupper ( *second_bytes ) );
 		if ( diff )
@@ -231,7 +217,6 @@ int strncasecmp ( const char *first, const char *second, size_t max ) {
 		if ( ! *first_bytes )
 			return 0;
 	}
-	return 0;
 }
 
 /**

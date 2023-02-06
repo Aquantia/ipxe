@@ -248,7 +248,6 @@ void history_free ( struct readline_history *history ) {
  * @v prompt		Prompt string
  * @v prefill		Prefill string, or NULL for no prefill
  * @v history		History buffer, or NULL for no history
- * @v timeout		Timeout period, in ticks (0=indefinite)
  * @ret line		Line read from console (excluding terminating newline)
  * @ret rc		Return status code
  *
@@ -256,8 +255,7 @@ void history_free ( struct readline_history *history ) {
  * eventually call free() to release the storage.
  */
 int readline_history ( const char *prompt, const char *prefill,
-		       struct readline_history *history, unsigned long timeout,
-		       char **line ) {
+		       struct readline_history *history, char **line ) {
 	char buf[READLINE_MAX];
 	struct edit_string string;
 	int key;
@@ -287,17 +285,8 @@ int readline_history ( const char *prompt, const char *prefill,
 	}
 
 	while ( 1 ) {
-
-		/* Get keypress */
-		key = getkey ( timeout );
-		if ( key < 0 ) {
-			rc = -ETIMEDOUT;
-			goto done;
-		}
-		timeout = 0;
-
 		/* Handle keypress */
-		key = edit_string ( &string, key );
+		key = edit_string ( &string, getkey ( 0 ) );
 		sync_console ( &string );
 		move_by = 0;
 		switch ( key ) {
@@ -353,6 +342,6 @@ int readline_history ( const char *prompt, const char *prefill,
 char * readline ( const char *prompt ) {
 	char *line;
 
-	readline_history ( prompt, NULL, NULL, 0, &line );
+	readline_history ( prompt, NULL, NULL, &line );
 	return line;
 }

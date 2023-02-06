@@ -1,11 +1,9 @@
 /****************************************************************************
  * Driver for Solarflare network controllers and boards
  *
- * Written by Martin Habets <habetsm.xilinx@gmail.com>, maintained
- * by <pre-boot-drivers@xilinx.com>
+ * Written by Martin Habets <mhabets@solarflare.com>
  *
- * Copyright 2012-2019 Solarflare Communications Inc.
- * Copyright 2019-2020 Xilinx Inc.
+ * Copyright 2012-2017 Solarflare Communications Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as

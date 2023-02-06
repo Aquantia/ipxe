@@ -57,7 +57,7 @@ void certstat ( struct x509_certificate *cert ) {
 		printf ( " [PERMANENT]" );
 	if ( cert->flags & X509_FL_EXPLICIT )
 		printf ( " [EXPLICIT]" );
-	if ( x509_is_valid ( cert, NULL ) )
+	if ( x509_is_valid ( cert ) )
 		printf ( " [VALIDATED]" );
 	printf ( "\n" );
 }

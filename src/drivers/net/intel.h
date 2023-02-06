@@ -12,7 +12,6 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #include <stdint.h>
 #include <ipxe/if_ether.h>
 #include <ipxe/nvs.h>
-#include <ipxe/dma.h>
 
 /** Intel BAR size */
 #define INTEL_BAR_SIZE ( 128 * 1024 )
@@ -213,8 +212,6 @@ union intel_receive_address {
 struct intel_ring {
 	/** Descriptors */
 	struct intel_descriptor *desc;
-	/** Descriptor ring DMA mapping */
-	struct dma_mapping map;
 	/** Producer index */
 	unsigned int prod;
 	/** Consumer index */
@@ -280,8 +277,6 @@ intel_init_mbox ( struct intel_mailbox *mbox, unsigned int ctrl,
 struct intel_nic {
 	/** Registers */
 	void *regs;
-	/** DMA device */
-	struct dma_device *dma;
 	/** Port number (for multi-port devices) */
 	unsigned int port;
 	/** Flags */

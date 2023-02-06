@@ -20,12 +20,11 @@ unsigned int console_height = CONSOLE_DEFAULT_HEIGHT;
  * Write a single character to each console device
  *
  * @v character		Character to be written
- * @ret character	Character written
  *
  * The character is written out to all enabled console devices, using
  * each device's console_driver::putchar() method.
  */
-int putchar ( int character ) {
+void putchar ( int character ) {
 	struct console_driver *console;
 
 	/* Automatic LF -> CR,LF translation */
@@ -38,8 +37,6 @@ int putchar ( int character ) {
 		     console->putchar )
 			console->putchar ( character );
 	}
-
-	return character;
 }
 
 /**

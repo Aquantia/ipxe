@@ -25,7 +25,6 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 
 #include <stdarg.h>
 #include <string.h>
-#include <strings.h>
 #include <errno.h>
 #include <ipxe/xfer.h>
 #include <ipxe/uri.h>
@@ -48,7 +47,7 @@ struct uri_opener * xfer_uri_opener ( const char *scheme ) {
 	struct uri_opener *opener;
 
 	for_each_table_entry ( opener, URI_OPENERS ) {
-		if ( strcasecmp ( scheme, opener->scheme ) == 0 )
+		if ( strcmp ( scheme, opener->scheme ) == 0 )
 			return opener;
 	}
 	return NULL;

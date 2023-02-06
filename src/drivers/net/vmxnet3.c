@@ -465,8 +465,7 @@ static int vmxnet3_open ( struct net_device *netdev ) {
 	int rc;
 
 	/* Allocate DMA areas */
-	vmxnet->dma = malloc_phys ( sizeof ( *vmxnet->dma ),
-				    VMXNET3_DMA_ALIGN );
+	vmxnet->dma = malloc_dma ( sizeof ( *vmxnet->dma ), VMXNET3_DMA_ALIGN );
 	if ( ! vmxnet->dma ) {
 		DBGC ( vmxnet, "VMXNET3 %p could not allocate DMA area\n",
 		       vmxnet );
@@ -543,7 +542,7 @@ static int vmxnet3_open ( struct net_device *netdev ) {
  err_activate:
 	vmxnet3_flush_tx ( netdev );
 	vmxnet3_flush_rx ( netdev );
-	free_phys ( vmxnet->dma, sizeof ( *vmxnet->dma ) );
+	free_dma ( vmxnet->dma, sizeof ( *vmxnet->dma ) );
  err_alloc_dma:
 	return rc;
 }
@@ -560,7 +559,7 @@ static void vmxnet3_close ( struct net_device *netdev ) {
 	vmxnet3_command ( vmxnet, VMXNET3_CMD_RESET_DEV );
 	vmxnet3_flush_tx ( netdev );
 	vmxnet3_flush_rx ( netdev );
-	free_phys ( vmxnet->dma, sizeof ( *vmxnet->dma ) );
+	free_dma ( vmxnet->dma, sizeof ( *vmxnet->dma ) );
 }
 
 /** vmxnet3 net device operations */

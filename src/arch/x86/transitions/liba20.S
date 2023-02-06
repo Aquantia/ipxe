@@ -285,7 +285,7 @@ enable_a20:
 	ret
 
 	.section ".text16.early.data", "aw", @progbits
-	.balign	2
+	.align	2
 enable_a20_method:
 	.word	0
 	.size	enable_a20_method, . - enable_a20_method

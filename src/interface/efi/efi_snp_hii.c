@@ -65,7 +65,6 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #include <ipxe/efi/efi_strings.h>
 #include <ipxe/efi/efi_path.h>
 #include <ipxe/efi/efi_utils.h>
-#include <ipxe/efi/efi_null.h>
 #include <config/branding.h>
 
 /** EFI platform setup formset GUID */
@@ -660,8 +659,7 @@ int efi_snp_hii_install ( struct efi_snp_device *snpdev ) {
 	VENDOR_DEVICE_PATH *vendor_path;
 	EFI_DEVICE_PATH_PROTOCOL *path_end;
 	size_t path_prefix_len;
-	int leak = 0;
-	EFI_STATUS efirc;
+	int efirc;
 	int rc;
 
 	/* Do nothing if HII database protocol is not supported */
@@ -753,37 +751,23 @@ int efi_snp_hii_install ( struct efi_snp_device *snpdev ) {
 
 	efi_child_del ( snpdev->handle, snpdev->hii_child_handle );
  err_efi_child_add:
-	if ( ( efirc = bs->UninstallMultipleProtocolInterfaces (
+	bs->UninstallMultipleProtocolInterfaces (
 			snpdev->hii_child_handle,
 			&efi_hii_config_access_protocol_guid, &snpdev->hii,
-			NULL ) ) != 0 ) {
-		DBGC ( snpdev, "SNPDEV %p could not uninstall HII protocol: "
-		       "%s\n", snpdev, strerror ( -EEFI ( efirc ) ) );
-		leak = 1;
-	}
-	efi_nullify_hii ( &snpdev->hii );
+			NULL );
  err_install_protocol:
-	if ( ! leak )
-		efihii->RemovePackageList ( efihii, snpdev->hii_handle );
+	efihii->RemovePackageList ( efihii, snpdev->hii_handle );
  err_new_package_list:
-	if ( ( efirc = bs->UninstallMultipleProtocolInterfaces (
+	bs->UninstallMultipleProtocolInterfaces (
 			snpdev->hii_child_handle,
 			&efi_device_path_protocol_guid, snpdev->hii_child_path,
-			NULL ) ) != 0 ) {
-		DBGC ( snpdev, "SNPDEV %p could not uninstall HII path: %s\n",
-		       snpdev, strerror ( -EEFI ( efirc ) ) );
-		leak = 1;
-	}
+			NULL );
  err_hii_child_handle:
-	if ( ! leak ) {
-		free ( snpdev->hii_child_path );
-		snpdev->hii_child_path = NULL;
-	}
+	free ( snpdev->hii_child_path );
+	snpdev->hii_child_path = NULL;
  err_alloc_child_path:
-	if ( ! leak ) {
-		free ( snpdev->package_list );
-		snpdev->package_list = NULL;
-	}
+	free ( snpdev->package_list );
+	snpdev->package_list = NULL;
  err_build_package_list:
  err_no_hii:
 	return rc;
@@ -793,49 +777,27 @@ int efi_snp_hii_install ( struct efi_snp_device *snpdev ) {
  * Uninstall HII protocol and package for SNP device
  *
  * @v snpdev		SNP device
- * @ret leak		Uninstallation failed: leak memory
  */
-int efi_snp_hii_uninstall ( struct efi_snp_device *snpdev ) {
+void efi_snp_hii_uninstall ( struct efi_snp_device *snpdev ) {
 	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
-	int leak = efi_shutdown_in_progress;
-	EFI_STATUS efirc;
 
 	/* Do nothing if HII database protocol is not supported */
 	if ( ! efihii )
-		return 0;
+		return;
 
 	/* Uninstall protocols and remove package list */
 	efi_child_del ( snpdev->handle, snpdev->hii_child_handle );
-	if ( ( ! efi_shutdown_in_progress ) &&
-	     ( ( efirc = bs->UninstallMultipleProtocolInterfaces (
+	bs->UninstallMultipleProtocolInterfaces (
 			snpdev->hii_child_handle,
 			&efi_hii_config_access_protocol_guid, &snpdev->hii,
-			NULL ) ) != 0 ) ) {
-		DBGC ( snpdev, "SNPDEV %p could not uninstall HII protocol: "
-		       "%s\n", snpdev, strerror ( -EEFI ( efirc ) ) );
-		leak = 1;
-	}
-	efi_nullify_hii ( &snpdev->hii );
-	if ( ! leak )
-		efihii->RemovePackageList ( efihii, snpdev->hii_handle );
-	if ( ( ! efi_shutdown_in_progress ) &&
-	     ( ( efirc = bs->UninstallMultipleProtocolInterfaces (
+			NULL );
+	efihii->RemovePackageList ( efihii, snpdev->hii_handle );
+	bs->UninstallMultipleProtocolInterfaces (
 			snpdev->hii_child_handle,
 			&efi_device_path_protocol_guid, snpdev->hii_child_path,
-			NULL ) ) != 0 ) ) {
-		DBGC ( snpdev, "SNPDEV %p could not uninstall HII path: %s\n",
-		       snpdev, strerror ( -EEFI ( efirc ) ) );
-		leak = 1;
-	}
-	if ( ! leak ) {
-		free ( snpdev->hii_child_path );
-		snpdev->hii_child_path = NULL;
-		free ( snpdev->package_list );
-		snpdev->package_list = NULL;
-	}
-
-	/* Report leakage, if applicable */
-	if ( leak && ( ! efi_shutdown_in_progress ) )
-		DBGC ( snpdev, "SNPDEV %p HII nullified and leaked\n", snpdev );
-	return leak;
+			NULL );
+	free ( snpdev->hii_child_path );
+	snpdev->hii_child_path = NULL;
+	free ( snpdev->package_list );
+	snpdev->package_list = NULL;
 }

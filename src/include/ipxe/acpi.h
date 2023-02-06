@@ -78,9 +78,6 @@ struct acpi_qword_address_space_resource {
 /** A memory address space type */
 #define ACPI_ADDRESS_TYPE_MEM 0x00
 
-/** A bus number address space type */
-#define ACPI_ADDRESS_TYPE_BUS 0x02
-
 /** An ACPI resource descriptor */
 union acpi_resource {
 	/** Tag byte */
@@ -355,12 +352,9 @@ struct acpi_model {
 #define PROVIDE_ACPI_INLINE( _subsys, _api_func ) \
 	PROVIDE_SINGLE_API_INLINE ( ACPI_PREFIX_ ## _subsys, _api_func )
 
-extern userptr_t acpi_find_via_rsdt ( uint32_t signature, unsigned int index );
-
 /* Include all architecture-independent ACPI API headers */
 #include <ipxe/null_acpi.h>
 #include <ipxe/efi/efi_acpi.h>
-#include <ipxe/linux/linux_acpi.h>
 
 /* Include all architecture-dependent ACPI API headers */
 #include <bits/acpi.h>
@@ -372,24 +366,14 @@ extern userptr_t acpi_find_via_rsdt ( uint32_t signature, unsigned int index );
  */
 userptr_t acpi_find_rsdt ( void );
 
-/**
- * Locate ACPI table
- *
- * @v signature		Requested table signature
- * @v index		Requested index of table with this signature
- * @ret table		Table, or UNULL if not found
- */
-userptr_t acpi_find ( uint32_t signature, unsigned int index );
-
 extern struct acpi_descriptor *
 acpi_describe ( struct interface *interface );
 #define acpi_describe_TYPE( object_type )				\
 	typeof ( struct acpi_descriptor * ( object_type ) )
 
 extern void acpi_fix_checksum ( struct acpi_header *acpi );
-extern int acpi_extract ( uint32_t signature, void *data,
-			  int ( * extract ) ( userptr_t zsdt, size_t len,
-					      size_t offset, void *data ) );
+extern userptr_t acpi_find ( uint32_t signature, unsigned int index );
+extern int acpi_sx ( uint32_t signature );
 extern void acpi_add ( struct acpi_descriptor *desc );
 extern void acpi_del ( struct acpi_descriptor *desc );
 extern int acpi_install ( int ( * install ) ( struct acpi_header *acpi ) );

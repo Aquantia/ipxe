@@ -32,8 +32,8 @@ extern void pcidirect_prepare ( struct pci_device *pci, int where );
  */
 static inline __always_inline int
 PCIAPI_INLINE ( direct, pci_num_bus ) ( void ) {
-	/* Scan first bus and rely on bridge detection to find higher buses */
-	return 1;
+	/* No way to work this out via Type 1 accesses */
+	return 0x100;
 }
 
 /**

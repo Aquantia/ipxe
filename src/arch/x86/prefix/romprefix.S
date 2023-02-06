@@ -88,7 +88,7 @@ checksum:
 	.previous
 
 .ifeqs	BUSTYPE, "PCIR"
-	.balign	4
+	.align	4
 pciheader:
 	.ascii	"PCIR"			/* Signature */
 	.word	pci_vendor_id		/* Vendor identification */ 
@@ -136,7 +136,7 @@ pci_devlist_end:
 	 * BIOSes will scan on 16-byte boundaries rather than using
 	 * the offset stored at 0x1a
 	 */
-	.balign	16
+	.align	16
 pnpheader:
 	.ascii	"$PnP"			/* Signature */
 	.byte	0x01			/* Structure revision */
@@ -184,7 +184,7 @@ prodstr_pci_id:
 
 	.globl	undiheader	
 	.weak	undiloader
-	.balign	4
+	.align	4
 undiheader:
 	.ascii	"UNDI"			/* Signature */
 	.byte	undiheader_len		/* Length of structure */
@@ -199,7 +199,7 @@ undiheader:
 	.equ undiheader_len, . - undiheader
 	.size undiheader, . - undiheader
 
-	.balign	4
+	.align	4
 ipxeheader:
 	.ascii	"iPXE"			/* Signature */
 	.byte	ipxeheader_len		/* Length of structure */

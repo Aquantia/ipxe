@@ -36,7 +36,6 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #include <ipxe/iobuf.h>
 #include <ipxe/malloc.h>
 #include <ipxe/pci.h>
-#include <ipxe/dma.h>
 #include <ipxe/nvs.h>
 #include <ipxe/threewire.h>
 #include <ipxe/bitbash.h>
@@ -420,16 +419,6 @@ static int realtek_phy_reset ( struct realtek_nic *rtl ) {
 		 */
 	}
 
-	/* Some cards (e.g. RTL8211B) have a hardware errata that
-	 * requires the MII_MMD_DATA register to be cleared before the
-	 * link will come up.
-	 */
-	if ( ( rc = mii_write ( &rtl->mii, MII_MMD_DATA, 0 ) ) != 0 ) {
-		/* Ignore failures, since the register may not be
-		 * present on all PHYs.
-		 */
-	}
-
 	/* Restart autonegotiation */
 	if ( ( rc = mii_restart ( &rtl->mii ) ) != 0 ) {
 		DBGC ( rtl, "REALTEK %p could not restart MII: %s\n",
@@ -516,27 +505,44 @@ static void realtek_check_link ( struct net_device *netdev ) {
  * @ret rc		Return status code
  */
 static int realtek_create_buffer ( struct realtek_nic *rtl ) {
-	struct realtek_rx_buffer *rxbuf = &rtl->rxbuf;
 	size_t len = ( RTL_RXBUF_LEN + RTL_RXBUF_PAD );
+	physaddr_t address;
+	int rc;
 
 	/* Do nothing unless in legacy mode */
 	if ( ! rtl->legacy )
 		return 0;
 
 	/* Allocate buffer */
-	rxbuf->data = dma_alloc ( rtl->dma, &rxbuf->map, len,
-				  RTL_RXBUF_ALIGN );
-	if ( ! rxbuf->data )
-		return -ENOMEM;
+	rtl->rx_buffer = malloc_dma ( len, RTL_RXBUF_ALIGN );
+	if ( ! rtl->rx_buffer ) {
+		rc = -ENOMEM;
+		goto err_alloc;
+	}
+	address = virt_to_bus ( rtl->rx_buffer );
+
+	/* Check that card can support address */
+	if ( address & ~0xffffffffULL ) {
+		DBGC ( rtl, "REALTEK %p cannot support 64-bit RX buffer "
+		       "address\n", rtl );
+		rc = -ENOTSUP;
+		goto err_64bit;
+	}
 
 	/* Program buffer address */
-	writel ( dma ( &rxbuf->map, rxbuf->data ), rtl->regs + RTL_RBSTART );
-	DBGC ( rtl, "REALTEK %p receive buffer is at [%08lx,%08lx,%08lx)\n",
-	       rtl, virt_to_phys ( rxbuf->data ),
-	       ( virt_to_phys ( rxbuf->data ) + RTL_RXBUF_LEN ),
-	       ( virt_to_phys ( rxbuf->data ) + len ) );
+	writel ( address, rtl->regs + RTL_RBSTART );
+	DBGC ( rtl, "REALTEK %p receive buffer is at [%08llx,%08llx,%08llx)\n",
+	       rtl, ( ( unsigned long long ) address ),
+	       ( ( unsigned long long ) address + RTL_RXBUF_LEN ),
+	       ( ( unsigned long long ) address + len ) );
 
 	return 0;
+
+ err_64bit:
+	free_dma ( rtl->rx_buffer, len );
+	rtl->rx_buffer = NULL;
+ err_alloc:
+	return rc;
 }
 
 /**
@@ -545,7 +551,6 @@ static int realtek_create_buffer ( struct realtek_nic *rtl ) {
  * @v rtl		Realtek device
  */
 static void realtek_destroy_buffer ( struct realtek_nic *rtl ) {
-	struct realtek_rx_buffer *rxbuf = &rtl->rxbuf;
 	size_t len = ( RTL_RXBUF_LEN + RTL_RXBUF_PAD );
 
 	/* Do nothing unless in legacy mode */
@@ -556,9 +561,9 @@ static void realtek_destroy_buffer ( struct realtek_nic *rtl ) {
 	writel ( 0, rtl->regs + RTL_RBSTART );
 
 	/* Free buffer */
-	dma_free ( &rxbuf->map, rxbuf->data, len );
-	rxbuf->data = NULL;
-	rxbuf->offset = 0;
+	free_dma ( rtl->rx_buffer, len );
+	rtl->rx_buffer = NULL;
+	rtl->rx_offset = 0;
 }
 
 /**
@@ -577,8 +582,7 @@ static int realtek_create_ring ( struct realtek_nic *rtl,
 		return 0;
 
 	/* Allocate descriptor ring */
-	ring->desc = dma_alloc ( rtl->dma, &ring->map, ring->len,
-				 RTL_RING_ALIGN );
+	ring->desc = malloc_dma ( ring->len, RTL_RING_ALIGN );
 	if ( ! ring->desc )
 		return -ENOMEM;
 
@@ -586,13 +590,13 @@ static int realtek_create_ring ( struct realtek_nic *rtl,
 	memset ( ring->desc, 0, ring->len );
 
 	/* Program ring address */
-	address = dma ( &ring->map, ring->desc );
+	address = virt_to_bus ( ring->desc );
 	writel ( ( ( ( uint64_t ) address ) >> 32 ),
 		 rtl->regs + ring->reg + 4 );
 	writel ( ( address & 0xffffffffUL ), rtl->regs + ring->reg );
-	DBGC ( rtl, "REALTEK %p ring %02x is at [%08lx,%08lx)\n",
-	       rtl, ring->reg, virt_to_phys ( ring->desc ),
-	       ( virt_to_phys ( ring->desc ) + ring->len ) );
+	DBGC ( rtl, "REALTEK %p ring %02x is at [%08llx,%08llx)\n",
+	       rtl, ring->reg, ( ( unsigned long long ) address ),
+	       ( ( unsigned long long ) address + ring->len ) );
 
 	return 0;
 }
@@ -619,7 +623,7 @@ static void realtek_destroy_ring ( struct realtek_nic *rtl,
 	writel ( 0, rtl->regs + ring->reg + 4 );
 
 	/* Free descriptor ring */
-	dma_free ( &ring->map, ring->desc, ring->len );
+	free_dma ( ring->desc, ring->len );
 	ring->desc = NULL;
 }
 
@@ -632,6 +636,7 @@ static void realtek_refill_rx ( struct realtek_nic *rtl ) {
 	struct realtek_descriptor *rx;
 	struct io_buffer *iobuf;
 	unsigned int rx_idx;
+	physaddr_t address;
 	int is_last;
 
 	/* Do nothing in legacy mode */
@@ -641,7 +646,7 @@ static void realtek_refill_rx ( struct realtek_nic *rtl ) {
 	while ( ( rtl->rx.prod - rtl->rx.cons ) < RTL_NUM_RX_DESC ) {
 
 		/* Allocate I/O buffer */
-		iobuf = alloc_rx_iob ( RTL_RX_MAX_LEN, rtl->dma );
+		iobuf = alloc_iob ( RTL_RX_MAX_LEN );
 		if ( ! iobuf ) {
 			/* Wait for next refill */
 			return;
@@ -653,7 +658,8 @@ static void realtek_refill_rx ( struct realtek_nic *rtl ) {
 		rx = &rtl->rx.desc[rx_idx];
 
 		/* Populate receive descriptor */
-		rx->address = cpu_to_le64 ( iob_dma ( iobuf ) );
+		address = virt_to_bus ( iobuf->data );
+		rx->address = cpu_to_le64 ( address );
 		rx->length = cpu_to_le16 ( RTL_RX_MAX_LEN );
 		wmb();
 		rx->flags = ( cpu_to_le16 ( RTL_DESC_OWN ) |
@@ -664,9 +670,9 @@ static void realtek_refill_rx ( struct realtek_nic *rtl ) {
 		assert ( rtl->rx_iobuf[rx_idx] == NULL );
 		rtl->rx_iobuf[rx_idx] = iobuf;
 
-		DBGC2 ( rtl, "REALTEK %p RX %d is [%lx,%lx)\n",
-			rtl, rx_idx, virt_to_phys ( iobuf->data ),
-			( virt_to_phys ( iobuf->data ) + RTL_RX_MAX_LEN ) );
+		DBGC2 ( rtl, "REALTEK %p RX %d is [%llx,%llx)\n", rtl, rx_idx,
+			( ( unsigned long long ) address ),
+			( ( unsigned long long ) address + RTL_RX_MAX_LEN ) );
 	}
 }
 
@@ -756,16 +762,12 @@ static void realtek_close ( struct net_device *netdev ) {
 	/* Discard any unused receive buffers */
 	for ( i = 0 ; i < RTL_NUM_RX_DESC ; i++ ) {
 		if ( rtl->rx_iobuf[i] )
-			free_rx_iob ( rtl->rx_iobuf[i] );
+			free_iob ( rtl->rx_iobuf[i] );
 		rtl->rx_iobuf[i] = NULL;
 	}
 
 	/* Destroy transmit descriptor ring */
 	realtek_destroy_ring ( rtl, &rtl->tx );
-
-	/* Reset legacy transmit descriptor index, if applicable */
-	if ( rtl->legacy )
-		realtek_reset ( rtl );
 }
 
 /**
@@ -780,41 +782,42 @@ static int realtek_transmit ( struct net_device *netdev,
 	struct realtek_nic *rtl = netdev->priv;
 	struct realtek_descriptor *tx;
 	unsigned int tx_idx;
+	physaddr_t address;
 	int is_last;
-	int rc;
 
 	/* Get next transmit descriptor */
 	if ( ( rtl->tx.prod - rtl->tx.cons ) >= RTL_NUM_TX_DESC ) {
 		netdev_tx_defer ( netdev, iobuf );
 		return 0;
 	}
-	tx_idx = ( rtl->tx.prod % RTL_NUM_TX_DESC );
-
-	/* Pad and align packet, if needed */
-	if ( rtl->legacy )
-		iob_pad ( iobuf, ETH_ZLEN );
-
-	/* Map I/O buffer */
-	if ( ( rc = iob_map_tx ( iobuf, rtl->dma ) ) != 0 )
-		return rc;
-
-	/* Update producer index */
-	rtl->tx.prod++;
+	tx_idx = ( rtl->tx.prod++ % RTL_NUM_TX_DESC );
 
 	/* Transmit packet */
 	if ( rtl->legacy ) {
 
+		/* Pad and align packet */
+		iob_pad ( iobuf, ETH_ZLEN );
+		address = virt_to_bus ( iobuf->data );
+
+		/* Check that card can support address */
+		if ( address & ~0xffffffffULL ) {
+			DBGC ( rtl, "REALTEK %p cannot support 64-bit TX "
+			       "buffer address\n", rtl );
+			return -ENOTSUP;
+		}
+
 		/* Add to transmit ring */
-		writel ( iob_dma ( iobuf ), rtl->regs + RTL_TSAD ( tx_idx ) );
+		writel ( address, rtl->regs + RTL_TSAD ( tx_idx ) );
 		writel ( ( RTL_TSD_ERTXTH_DEFAULT | iob_len ( iobuf ) ),
 			 rtl->regs + RTL_TSD ( tx_idx ) );
 
 	} else {
 
 		/* Populate transmit descriptor */
+		address = virt_to_bus ( iobuf->data );
 		is_last = ( tx_idx == ( RTL_NUM_TX_DESC - 1 ) );
 		tx = &rtl->tx.desc[tx_idx];
-		tx->address = cpu_to_le64 ( iob_dma ( iobuf ) );
+		tx->address = cpu_to_le64 ( address );
 		tx->length = cpu_to_le16 ( iob_len ( iobuf ) );
 		wmb();
 		tx->flags = ( cpu_to_le16 ( RTL_DESC_OWN | RTL_DESC_FS |
@@ -826,9 +829,10 @@ static int realtek_transmit ( struct net_device *netdev,
 		writeb ( RTL_TPPOLL_NPQ, rtl->regs + rtl->tppoll );
 	}
 
-	DBGC2 ( rtl, "REALTEK %p TX %d is [%lx,%lx)\n",
-		rtl, tx_idx, virt_to_phys ( iobuf->data ),
-		virt_to_phys ( iobuf->data ) + iob_len ( iobuf ) );
+	DBGC2 ( rtl, "REALTEK %p TX %d is [%llx,%llx)\n", rtl, tx_idx,
+		( ( unsigned long long ) virt_to_bus ( iobuf->data ) ),
+		( ( ( unsigned long long ) virt_to_bus ( iobuf->data ) ) +
+		  iob_len ( iobuf ) ) );
 
 	return 0;
 }
@@ -888,12 +892,12 @@ static void realtek_legacy_poll_rx ( struct net_device *netdev ) {
 	while ( ! ( readb ( rtl->regs + RTL_CR ) & RTL_CR_BUFE ) ) {
 
 		/* Extract packet from receive buffer */
-		rx = ( rtl->rxbuf.data + rtl->rxbuf.offset );
+		rx = ( rtl->rx_buffer + rtl->rx_offset );
 		len = le16_to_cpu ( rx->length );
 		if ( rx->status & cpu_to_le16 ( RTL_STAT_ROK ) ) {
 
 			DBGC2 ( rtl, "REALTEK %p RX offset %x+%zx\n",
-				rtl, rtl->rxbuf.offset, len );
+				rtl, rtl->rx_offset, len );
 
 			/* Allocate I/O buffer */
 			iobuf = alloc_iob ( len );
@@ -913,16 +917,16 @@ static void realtek_legacy_poll_rx ( struct net_device *netdev ) {
 		} else {
 
 			DBGC ( rtl, "REALTEK %p RX offset %x+%zx error %04x\n",
-			       rtl, rtl->rxbuf.offset, len,
+			       rtl, rtl->rx_offset, len,
 			       le16_to_cpu ( rx->status ) );
 			netdev_rx_err ( netdev, NULL, -EIO );
 		}
 
 		/* Update buffer offset */
-		rtl->rxbuf.offset += ( sizeof ( *rx ) + len );
-		rtl->rxbuf.offset = ( ( rtl->rxbuf.offset + 3 ) & ~3 );
-		rtl->rxbuf.offset = ( rtl->rxbuf.offset % RTL_RXBUF_LEN );
-		writew ( ( rtl->rxbuf.offset - 16 ), rtl->regs + RTL_CAPR );
+		rtl->rx_offset = ( rtl->rx_offset + sizeof ( *rx ) + len );
+		rtl->rx_offset = ( ( rtl->rx_offset + 3 ) & ~3 );
+		rtl->rx_offset = ( rtl->rx_offset % RTL_RXBUF_LEN );
+		writew ( ( rtl->rx_offset - 16 ), rtl->regs + RTL_CAPR );
 
 		/* Give chip time to react before rechecking RTL_CR */
 		readw ( rtl->regs + RTL_CAPR );
@@ -1080,13 +1084,11 @@ static void realtek_detect ( struct realtek_nic *rtl ) {
 		DBGC ( rtl, "REALTEK %p appears to be an RTL8169\n", rtl );
 		rtl->have_phy_regs = 1;
 		rtl->tppoll = RTL_TPPOLL_8169;
-		dma_set_mask_64bit ( rtl->dma );
 	} else {
 		if ( ( check_cpcr == cpcr ) && ( cpcr != 0xffff ) ) {
 			DBGC ( rtl, "REALTEK %p appears to be an RTL8139C+\n",
 			       rtl );
 			rtl->tppoll = RTL_TPPOLL_8139CP;
-			dma_set_mask_64bit ( rtl->dma );
 		} else {
 			DBGC ( rtl, "REALTEK %p appears to be an RTL8139\n",
 			       rtl );
@@ -1131,9 +1133,6 @@ static int realtek_probe ( struct pci_device *pci ) {
 		rc = -ENODEV;
 		goto err_ioremap;
 	}
-
-	/* Configure DMA */
-	rtl->dma = &pci->dma;
 
 	/* Reset the NIC */
 	if ( ( rc = realtek_reset ( rtl ) ) != 0 )

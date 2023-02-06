@@ -1317,7 +1317,6 @@ static struct x509_chain empty_store = {
 
 /** Root certificate list containing the iPXE self-test root CA */
 static struct x509_root test_root = {
-	.refcnt = REF_INIT ( ref_no_free ),
 	.digest = &cms_test_algorithm,
 	.count = 1,
 	.fingerprints = root_crt_fingerprint,
@@ -1332,7 +1331,6 @@ static uint8_t dummy_fingerprint[] =
 
 /** Certificate store containing a dummy fingerprint */
 static struct x509_root dummy_root = {
-	.refcnt = REF_INIT ( ref_no_free ),
 	.digest = &cms_test_algorithm,
 	.count = 1,
 	.fingerprints = dummy_fingerprint,

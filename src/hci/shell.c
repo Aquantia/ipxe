@@ -91,7 +91,7 @@ int shell ( void ) {
 
 	/* Read and execute commands */
 	do {
-		readline_history ( shell_prompt, NULL, &history, 0, &line );
+		readline_history ( shell_prompt, NULL, &history, &line );
 		if ( line ) {
 			rc = system ( line );
 			free ( line );

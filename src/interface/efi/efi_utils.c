@@ -145,7 +145,7 @@ void efi_child_del ( EFI_HANDLE parent, EFI_HANDLE child ) {
 static int efi_pci_info ( EFI_HANDLE device, const char *prefix,
 			  struct device *dev ) {
 	EFI_HANDLE pci_device;
-	struct efi_pci_device efipci;
+	struct pci_device pci;
 	int rc;
 
 	/* Find parent PCI device */
@@ -157,16 +157,16 @@ static int efi_pci_info ( EFI_HANDLE device, const char *prefix,
 	}
 
 	/* Get PCI device information */
-	if ( ( rc = efipci_info ( pci_device, &efipci ) ) != 0 ) {
+	if ( ( rc = efipci_info ( pci_device, &pci ) ) != 0 ) {
 		DBGC ( device, "EFIDEV %s could not get PCI information: %s\n",
 		       efi_handle_name ( device ), strerror ( rc ) );
 		return rc;
 	}
 
 	/* Populate device information */
-	memcpy ( &dev->desc, &efipci.pci.dev.desc, sizeof ( dev->desc ) );
+	memcpy ( &dev->desc, &pci.dev.desc, sizeof ( dev->desc ) );
 	snprintf ( dev->name, sizeof ( dev->name ), "%s-%s",
-		   prefix, efipci.pci.dev.name );
+		   prefix, pci.dev.name );
 
 	return 0;
 }

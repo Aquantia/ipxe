@@ -854,8 +854,6 @@ struct xhci_trb_ring {
 	union xhci_trb *trb;
 	/** Length of transfer request blocks */
 	size_t len;
-	/** DMA mapping */
-	struct dma_mapping map;
 	/** Link TRB (if applicable) */
 	struct xhci_trb_link *link;
 
@@ -871,12 +869,8 @@ struct xhci_event_ring {
 	unsigned int cons;
 	/** Event ring segment table */
 	struct xhci_event_ring_segment *segment;
-	/** Event ring segment table DMA mapping */
-	struct dma_mapping segment_map;
 	/** Transfer request blocks */
 	union xhci_trb *trb;
-	/** Transfer request blocks DMA mapping */
-	struct dma_mapping trb_map;
 };
 
 /**
@@ -1041,34 +1035,10 @@ struct xhci_pch {
 /** Invalid protocol speed ID values quirk */
 #define XHCI_BAD_PSIV 0x0002
 
-/** Device context base address array */
-struct xhci_dcbaa {
-	/** Context base addresses */
-	uint64_t *context;
-	/** DMA mapping */
-	struct dma_mapping map;
-};
-
-/** Scratchpad buffer */
-struct xhci_scratchpad {
-	/** Number of page-sized scratchpad buffers */
-	unsigned int count;
-	/** Scratchpad buffer area */
-	userptr_t buffer;
-	/** Buffer DMA mapping */
-	struct dma_mapping buffer_map;
-	/** Scratchpad array */
-	uint64_t *array;
-	/** Array DMA mapping */
-	struct dma_mapping array_map;
-};
-
 /** An xHCI device */
 struct xhci_device {
 	/** Registers */
 	void *regs;
-	/** DMA device */
-	struct dma_device *dma;
 	/** Name */
 	const char *name;
 	/** Quirks */
@@ -1090,6 +1060,9 @@ struct xhci_device {
 	/** Number of ports */
 	unsigned int ports;
 
+	/** Number of page-sized scratchpad buffers */
+	unsigned int scratchpads;
+
 	/** 64-bit addressing capability */
 	int addr64;
 	/** Context size shift */
@@ -1104,10 +1077,12 @@ struct xhci_device {
 	unsigned int legacy;
 
 	/** Device context base address array */
-	struct xhci_dcbaa dcbaa;
+	uint64_t *dcbaa;
 
-	/** Scratchpad buffer */
-	struct xhci_scratchpad scratch;
+	/** Scratchpad buffer area */
+	userptr_t scratchpad;
+	/** Scratchpad buffer array */
+	uint64_t *scratchpad_array;
 
 	/** Command ring */
 	struct xhci_trb_ring command;
@@ -1136,8 +1111,6 @@ struct xhci_slot {
 	unsigned int id;
 	/** Slot context */
 	struct xhci_slot_context *context;
-	/** DMA mapping */
-	struct dma_mapping map;
 	/** Route string */
 	unsigned int route;
 	/** Root hub port number */

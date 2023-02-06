@@ -5,7 +5,6 @@
 #include <errno.h>
 #include <ipxe/io.h>
 #include <ipxe/isa.h>
-#include <config/isa.h>
 
 FILE_LICENCE ( GPL2_OR_LATER );
 
@@ -95,7 +94,7 @@ static void isa_remove ( struct isa_device *isa ) {
 static int isabus_probe ( struct root_device *rootdev ) {
 	struct isa_device *isa = NULL;
 	struct isa_driver *driver;
-	long ioidx;
+	int ioidx;
 	int rc;
 
 	for_each_table_entry ( driver, ISA_DRIVERS ) {

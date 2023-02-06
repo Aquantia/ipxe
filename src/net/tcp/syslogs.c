@@ -62,10 +62,9 @@ static struct sockaddr_tcpip logserver = {
  * @v intf		Interface
  * @v rc		Reason for close
  */
-static void syslogs_close ( struct interface *intf, int rc ) {
+static void syslogs_close ( struct interface *intf __unused, int rc ) {
 
 	DBG ( "SYSLOGS console disconnected: %s\n", strerror ( rc ) );
-	intf_restart ( intf, rc );
 }
 
 /**
@@ -209,6 +208,7 @@ const struct setting syslogs_setting __setting ( SETTING_MISC, syslogs ) = {
 static int apply_syslogs_settings ( void ) {
 	static char *old_server;
 	char *server;
+	struct interface *socket;
 	int rc;
 
 	/* Fetch log server */
@@ -234,32 +234,33 @@ static int apply_syslogs_settings ( void ) {
 		rc = 0;
 		goto out_no_server;
 	}
-	DBG ( "SYSLOGS using log server %s\n", server );
+
+	/* Add TLS filter */
+	if ( ( rc = add_tls ( &syslogs, server, &socket ) ) != 0 ) {
+		DBG ( "SYSLOGS cannot create TLS filter: %s\n",
+		      strerror ( rc ) );
+		goto err_add_tls;
+	}
 
 	/* Connect to log server */
-	if ( ( rc = xfer_open_named_socket ( &syslogs, SOCK_STREAM,
+	if ( ( rc = xfer_open_named_socket ( socket, SOCK_STREAM,
 					     (( struct sockaddr *) &logserver ),
 					     server, NULL ) ) != 0 ) {
 		DBG ( "SYSLOGS cannot connect to log server: %s\n",
 		      strerror ( rc ) );
 		goto err_open_named_socket;
 	}
-
-	/* Add TLS filter */
-	if ( ( rc = add_tls ( &syslogs, server, NULL, NULL ) ) != 0 ) {
-		DBG ( "SYSLOGS cannot create TLS filter: %s\n",
-		      strerror ( rc ) );
-		goto err_add_tls;
-	}
+	DBG ( "SYSLOGS using log server %s\n", server );
 
 	/* Record log server */
 	old_server = server;
+	server = NULL;
 
-	return 0;
+	/* Success */
+	rc = 0;
 
- err_add_tls:
  err_open_named_socket:
-	syslogs_close ( &syslogs, rc );
+ err_add_tls:
  out_no_server:
  out_no_change:
 	free ( server );

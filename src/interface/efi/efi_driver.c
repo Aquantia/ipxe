@@ -156,13 +156,13 @@ efi_driver_start ( EFI_DRIVER_BINDING_PROTOCOL *driver __unused,
 	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
 	struct efi_driver *efidrv;
 	struct efi_device *efidev;
-	struct efi_saved_tpl tpl;
 	union {
 		EFI_DEVICE_PATH_PROTOCOL *path;
 		void *interface;
 	} path;
 	EFI_DEVICE_PATH_PROTOCOL *path_end;
 	size_t path_len;
+	EFI_TPL saved_tpl;
 	EFI_STATUS efirc;
 	int rc;
 
@@ -181,7 +181,7 @@ efi_driver_start ( EFI_DRIVER_BINDING_PROTOCOL *driver __unused,
 	}
 
 	/* Raise TPL */
-	efi_raise_tpl ( &tpl );
+	saved_tpl = bs->RaiseTPL ( TPL_CALLBACK );
 
 	/* Do nothing if we are currently disconnecting drivers */
 	if ( efi_driver_disconnecting ) {
@@ -236,7 +236,7 @@ efi_driver_start ( EFI_DRIVER_BINDING_PROTOCOL *driver __unused,
 			DBGC ( device, "EFIDRV %s using driver \"%s\"\n",
 			       efi_handle_name ( device ),
 			       efidev->driver->name );
-			efi_restore_tpl ( &tpl );
+			bs->RestoreTPL ( saved_tpl );
 			return 0;
 		}
 		DBGC ( device, "EFIDRV %s could not start driver \"%s\": %s\n",
@@ -254,7 +254,7 @@ efi_driver_start ( EFI_DRIVER_BINDING_PROTOCOL *driver __unused,
 	}
  err_open_path:
  err_disconnecting:
-	efi_restore_tpl ( &tpl );
+	bs->RestoreTPL ( saved_tpl );
  err_already_started:
 	return efirc;
 }
@@ -273,9 +273,10 @@ static EFI_STATUS EFIAPI
 efi_driver_stop ( EFI_DRIVER_BINDING_PROTOCOL *driver __unused,
 		  EFI_HANDLE device, UINTN num_children,
 		  EFI_HANDLE *children ) {
+	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
 	struct efi_driver *efidrv;
 	struct efi_device *efidev;
-	struct efi_saved_tpl tpl;
+	EFI_TPL saved_tpl;
 	UINTN i;
 
 	DBGC ( device, "EFIDRV %s DRIVER_STOP", efi_handle_name ( device ) );
@@ -294,7 +295,7 @@ efi_driver_stop ( EFI_DRIVER_BINDING_PROTOCOL *driver __unused,
 	}
 
 	/* Raise TPL */
-	efi_raise_tpl ( &tpl );
+	saved_tpl = bs->RaiseTPL ( TPL_CALLBACK );
 
 	/* Stop this device */
 	efidrv = efidev->driver;
@@ -303,7 +304,7 @@ efi_driver_stop ( EFI_DRIVER_BINDING_PROTOCOL *driver __unused,
 	list_del ( &efidev->dev.siblings );
 	free ( efidev );
 
-	efi_restore_tpl ( &tpl );
+	bs->RestoreTPL ( saved_tpl );
 	return 0;
 }
 

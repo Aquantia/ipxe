@@ -41,7 +41,6 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #include <ipxe/efi/efi.h>
 #include <ipxe/efi/efi_snp.h>
 #include <ipxe/efi/efi_pxe.h>
-#include <ipxe/efi/efi_null.h>
 #include <ipxe/efi/Protocol/PxeBaseCode.h>
 #include <ipxe/efi/Protocol/AppleNetBoot.h>
 #include <usr/ifmgmt.h>
@@ -756,8 +755,7 @@ static EFI_STATUS EFIAPI efi_pxe_start ( EFI_PXE_BASE_CODE_PROTOCOL *base,
 	sa_family_t family = ( use_ipv6 ? AF_INET6 : AF_INET );
 	int rc;
 
-	DBGC ( pxe, "PXE %s START %s\n",
-	       pxe->name, ( use_ipv6 ? "IPv6" : "IPv4" ) );
+	DBGC ( pxe, "PXE %s START %s\n", pxe->name, ( ipv6 ? "IPv6" : "IPv4" ));
 
 	/* Initialise mode structure */
 	memset ( mode, 0, sizeof ( *mode ) );
@@ -1593,7 +1591,6 @@ int efi_pxe_install ( EFI_HANDLE handle, struct net_device *netdev ) {
 	struct efi_pxe *pxe;
 	struct in_addr ip;
 	BOOLEAN use_ipv6;
-	int leak = 0;
 	EFI_STATUS efirc;
 	int rc;
 
@@ -1646,23 +1643,14 @@ int efi_pxe_install ( EFI_HANDLE handle, struct net_device *netdev ) {
 	       pxe->name, efi_handle_name ( handle ) );
 	return 0;
 
-	if ( ( efirc = bs->UninstallMultipleProtocolInterfaces (
+	bs->UninstallMultipleProtocolInterfaces (
 			handle,
 			&efi_pxe_base_code_protocol_guid, &pxe->base,
 			&efi_apple_net_boot_protocol_guid, &pxe->apple,
-			NULL ) ) != 0 ) {
-		DBGC ( pxe, "PXE %s could not uninstall: %s\n",
-		       pxe->name, strerror ( -EEFI ( efirc ) ) );
-		leak = 1;
-	}
-	efi_nullify_pxe ( &pxe->base );
-	efi_nullify_apple ( &pxe->apple );
+			NULL );
  err_install_protocol:
-	if ( ! leak )
-		ref_put ( &pxe->refcnt );
+	ref_put ( &pxe->refcnt );
  err_alloc:
-	if ( leak )
-		DBGC ( pxe, "PXE %s nullified and leaked\n", pxe->name );
 	return rc;
 }
 
@@ -1674,8 +1662,6 @@ int efi_pxe_install ( EFI_HANDLE handle, struct net_device *netdev ) {
 void efi_pxe_uninstall ( EFI_HANDLE handle ) {
 	EFI_BOOT_SERVICES *bs = efi_systab->BootServices;
 	struct efi_pxe *pxe;
-	int leak = efi_shutdown_in_progress;
-	EFI_STATUS efirc;
 
 	/* Locate PXE base code */
 	pxe = efi_pxe_find ( handle );
@@ -1689,25 +1675,13 @@ void efi_pxe_uninstall ( EFI_HANDLE handle ) {
 	efi_pxe_stop ( &pxe->base );
 
 	/* Uninstall PXE base code protocol */
-	if ( ( ! efi_shutdown_in_progress ) &&
-	     ( ( efirc = bs->UninstallMultipleProtocolInterfaces (
+	bs->UninstallMultipleProtocolInterfaces (
 			handle,
 			&efi_pxe_base_code_protocol_guid, &pxe->base,
 			&efi_apple_net_boot_protocol_guid, &pxe->apple,
-			NULL ) ) != 0 ) ) {
-		DBGC ( pxe, "PXE %s could not uninstall: %s\n",
-		       pxe->name, strerror ( -EEFI ( efirc ) ) );
-		leak = 1;
-	}
-	efi_nullify_pxe ( &pxe->base );
-	efi_nullify_apple ( &pxe->apple );
+			NULL );
 
 	/* Remove from list and drop list's reference */
 	list_del ( &pxe->list );
-	if ( ! leak )
-		ref_put ( &pxe->refcnt );
-
-	/* Report leakage, if applicable */
-	if ( leak && ( ! efi_shutdown_in_progress ) )
-		DBGC ( pxe, "PXE %s nullified and leaked\n", pxe->name );
+	ref_put ( &pxe->refcnt );
 }

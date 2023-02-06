@@ -83,9 +83,6 @@ static void embedded_init ( void ) {
 		      image->name, strerror ( rc ) );
 		return;
 	}
-
-	/* Trust the selected image implicitly */
-	image_trust ( image );
 }
 
 /** Embedded image initialisation function */

@@ -21,7 +21,6 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #include <ipxe/ntlm.h>
 
 struct http_transaction;
-struct http_connection;
 
 /******************************************************************************
  *
@@ -44,10 +43,13 @@ struct http_scheme {
 	unsigned int port;
 	/** Transport-layer filter (if any)
 	 *
-	 * @v conn		HTTP connection
+	 * @v xfer		Data transfer interface
+	 * @v name		Host name
+	 * @v next		Next interface
 	 * @ret rc		Return status code
 	 */
-	int ( * filter ) ( struct http_connection *conn );
+	int ( * filter ) ( struct interface *xfer, const char *name,
+			   struct interface **next );
 };
 
 /** HTTP scheme table */

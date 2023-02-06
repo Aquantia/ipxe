@@ -2,10 +2,9 @@
  *
  * Driver datapath for Solarflare network cards
  *
- * Written by Shradha Shah, maintained by <pre-boot-drivers@xilinx.com>
+ * Written by Shradha Shah <sshah@solarflare.com>
  *
- * Copyright 2012-2019 Solarflare Communications Inc.
- * Copyright 2019-2020 Xilinx Inc.
+ * Copyright 2012-2017 Solarflare Communications Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -38,7 +37,7 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 
 void efx_hunt_free_special_buffer(void *buf, int bytes)
 {
-	free_phys(buf, bytes);
+	free_dma(buf, bytes);
 }
 
 static void *efx_hunt_alloc_special_buffer(int bytes,
@@ -51,7 +50,7 @@ static void *efx_hunt_alloc_special_buffer(int bytes,
 	 * buffer will be passed into an MC_CMD_INIT_*Q command to setup the
 	 * appropriate type of queue via MCDI.
 	 */
-	buffer = malloc_phys(bytes, EFX_BUF_ALIGN);
+	buffer = malloc_dma(bytes, EFX_BUF_ALIGN);
 	if (!buffer)
 		return NULL;
 

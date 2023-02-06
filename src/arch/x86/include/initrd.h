@@ -11,6 +11,13 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 
 #include <ipxe/uaccess.h>
 
+/** Minimum alignment for initrds
+ *
+ * Some versions of Linux complain about initrds that are not
+ * page-aligned.
+ */
+#define INITRD_ALIGN 4096
+
 /** Minimum free space required to reshuffle initrds
  *
  * Chosen to avoid absurdly long reshuffling times

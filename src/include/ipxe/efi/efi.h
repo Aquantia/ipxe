@@ -29,6 +29,11 @@ FILE_LICENCE ( GPL2_OR_LATER );
 /* EFI headers redefine ARRAY_SIZE */
 #undef ARRAY_SIZE
 
+/* EFI headers expect ICC to define __GNUC__ */
+#if defined ( __ICC ) && ! defined ( __GNUC__ )
+#define __GNUC__ 1
+#endif
+
 /* EFI headers think your compiler uses the MS ABI by default on X64 */
 #if __x86_64__
 #define EFIAPI __attribute__((ms_abi))
@@ -62,14 +67,6 @@ typedef struct {} *EFI_HANDLE;
 #include <ipxe/uuid.h>
 #include <ipxe/version.h>
 #include <ipxe/profile.h>
-
-/** An EFI saved task priority level */
-struct efi_saved_tpl {
-	/** Current external TPL */
-	EFI_TPL current;
-	/** Previous external TPL */
-	EFI_TPL previous;
-};
 
 /** An EFI protocol used by iPXE */
 struct efi_protocol {
@@ -223,7 +220,6 @@ extern EFI_HANDLE efi_image_handle;
 extern EFI_LOADED_IMAGE_PROTOCOL *efi_loaded_image;
 extern EFI_DEVICE_PATH_PROTOCOL *efi_loaded_image_path;
 extern EFI_SYSTEM_TABLE *efi_systab;
-extern EFI_TPL efi_external_tpl;
 extern int efi_shutdown_in_progress;
 
 extern const __attribute__ (( pure )) char *
@@ -237,18 +233,8 @@ efi_devpath_text ( EFI_DEVICE_PATH_PROTOCOL *path );
 extern const __attribute__ (( pure )) char *
 efi_handle_name ( EFI_HANDLE handle );
 
-extern void dbg_efi_opener ( EFI_HANDLE handle, EFI_GUID *protocol,
-			     EFI_OPEN_PROTOCOL_INFORMATION_ENTRY *opener );
 extern void dbg_efi_openers ( EFI_HANDLE handle, EFI_GUID *protocol );
 extern void dbg_efi_protocols ( EFI_HANDLE handle );
-
-#define DBG_EFI_OPENER_IF( level, handle, protocol,		\
-			   opener ) do {			\
-		if ( DBG_ ## level ) {				\
-			dbg_efi_opener ( handle, protocol,	\
-					 opener );		\
-		}						\
-	} while ( 0 )
 
 #define DBG_EFI_OPENERS_IF( level, handle, protocol ) do {	\
 		if ( DBG_ ## level ) {				\
@@ -260,12 +246,6 @@ extern void dbg_efi_protocols ( EFI_HANDLE handle );
 		if ( DBG_ ## level ) {				\
 			dbg_efi_protocols ( handle );		\
 		}						\
-	} while ( 0 )
-
-#define DBGC_EFI_OPENER_IF( level, id, ... ) do {		\
-		DBG_AC_IF ( level, id );			\
-		DBG_EFI_OPENER_IF ( level, __VA_ARGS__ );	\
-		DBG_DC_IF ( level );				\
 	} while ( 0 )
 
 #define DBGC_EFI_OPENERS_IF( level, id, ... ) do {		\
@@ -280,22 +260,16 @@ extern void dbg_efi_protocols ( EFI_HANDLE handle );
 		DBG_DC_IF ( level );				\
 	} while ( 0 )
 
-#define DBGC_EFI_OPENER( ... )					\
-	DBGC_EFI_OPENER_IF ( LOG, ##__VA_ARGS__ )
 #define DBGC_EFI_OPENERS( ... )					\
 	DBGC_EFI_OPENERS_IF ( LOG, ##__VA_ARGS__ )
 #define DBGC_EFI_PROTOCOLS( ... )				\
 	DBGC_EFI_PROTOCOLS_IF ( LOG, ##__VA_ARGS__ )
 
-#define DBGC2_EFI_OPENER( ... )					\
-	DBGC_EFI_OPENER_IF ( EXTRA, ##__VA_ARGS__ )
 #define DBGC2_EFI_OPENERS( ... )				\
 	DBGC_EFI_OPENERS_IF ( EXTRA, ##__VA_ARGS__ )
 #define DBGC2_EFI_PROTOCOLS( ... )				\
 	DBGC_EFI_PROTOCOLS_IF ( EXTRA, ##__VA_ARGS__ )
 
-#define DBGCP_EFI_OPENER( ... )					\
-	DBGC_EFI_OPENER_IF ( PROFILE, ##__VA_ARGS__ )
 #define DBGCP_EFI_OPENERS( ... )				\
 	DBGC_EFI_OPENERS_IF ( PROFILE, ##__VA_ARGS__ )
 #define DBGCP_EFI_PROTOCOLS( ... )				\
@@ -340,7 +314,5 @@ efi_init_stack_guard ( EFI_HANDLE handle ) {
 
 extern EFI_STATUS efi_init ( EFI_HANDLE image_handle,
 			     EFI_SYSTEM_TABLE *systab );
-extern void efi_raise_tpl ( struct efi_saved_tpl *tpl );
-extern void efi_restore_tpl ( struct efi_saved_tpl *tpl );
 
 #endif /* _IPXE_EFI_H */

@@ -12,7 +12,6 @@ FILE_LICENCE ( GPL2_OR_LATER_OR_UBDL );
 #include <ipxe/interface.h>
 #include <ipxe/x509.h>
 
-extern int create_validator ( struct interface *job, struct x509_chain *chain,
-			      struct x509_root *root );
+extern int create_validator ( struct interface *job, struct x509_chain *chain );
 
 #endif /* _IPXE_VALIDATOR_H */

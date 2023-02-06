@@ -1,10 +1,13 @@
-# -*- makefile -*- : Force emacs to use Makefile mode
+MEDIA = linux
 
-# Include x86 Linux headers
-#
+# enable valgrind
+CFLAGS += -UNVALGRIND
+
 INCDIRS += arch/x86/include/linux
+SRCDIRS += interface/linux
+SRCDIRS += drivers/linux
+SRCDIRS += arch/x86/core/linux
 
-# Include generic Linux Makefile
-#
-MAKEDEPS	+= Makefile.linux
-include Makefile.linux
+$(BIN)/%.linux : $(BIN)/%.linux.tmp
+	$(QM)$(ECHO) "  [FINISH] $@"
+	$(Q)$(CP) $< $@

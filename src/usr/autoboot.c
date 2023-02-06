@@ -210,19 +210,18 @@ int uriboot ( struct uri *filename, struct uri **root_paths,
 }
 
 /**
- * Close all but one network device
+ * Close all open net devices
  *
  * Called before a fresh boot attempt in order to free up memory.  We
  * don't just close the device immediately after the boot fails,
  * because there may still be TCP connections in the process of
  * closing.
  */
-static void close_other_netdevs ( struct net_device *netdev ) {
-	struct net_device *other;
+static void close_all_netdevs ( void ) {
+	struct net_device *netdev;
 
-	for_each_netdev ( other ) {
-		if ( other != netdev )
-			ifclose ( other );
+	for_each_netdev ( netdev ) {
+		ifclose ( netdev );
 	}
 }
 
@@ -389,7 +388,7 @@ int netboot ( struct net_device *netdev ) {
 	int rc;
 
 	/* Close all other network devices */
-	close_other_netdevs ( netdev );
+	close_all_netdevs();
 
 	/* Open device and display device status */
 	if ( ( rc = ifopen ( netdev ) ) != 0 )
